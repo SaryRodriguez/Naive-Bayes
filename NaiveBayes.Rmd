@@ -1,0 +1,126 @@
+---
+title: "NaiveBayes"
+output: html_document
+---
+#Naive Bayes
+
+##Categorizing Job Titles
+
+Given a job title like "junior data analyst" categorize it as one of "finance", "sales", or "technology".
+
+##Hypothetical Use Case
+
+Suppose we own a professional networking site similar to LinkedIn. Users sign up, type some information about themselves, and then roam the network looking for jobs/connections/etc. Until recently, we only required users to enter their current job title, but now we’re asking them what industry they work in. New users are supplying this info as they sign up, but old users aren’t bothering to update their information. So, we need to build a text classification model to do it for them.
+
+
+```{r, warning=FALSE, message=FALSE}
+library(e1071)  # for naiveBayes()
+library(tm)  # for counting word frequencies
+```
+
+
+```{r, warning=FALSE, message=FALSE}
+setwd("~/R/NaiveBayes")
+jobtitles <- read.csv("./jobtitles.csv", na.strings=c("NA", ""))
+jobtitles
+```
+
+
+Our goal IS to estimate the probability those two unlabeled job titles should be categorized as Technology, Sales, or Finance, at which point we can make our best guess for the user. Formalizing this a bit, we want to find p(C_k \vert \textrm{job\textunderscore title}) where C_1, C_2, \text{and} C_3 are the classes Technology, Sales, and Finance.  (Note: this type of problem is called Document Classification.)
+How about that first unlabeled title, data analyst manager?  We should probably label it as Technology, but how do we train a computer to figure that out?  If we had trillions of training samples we might be able to estimate p(C_k \vert \textrm{job\textunderscore title}=\textrm{``data analyst manager"}) empirically (i.e. by measuring the relative frequency of each class for samples where job_title = data analyst manager).  Unfortunately we only have 10 training samples (none of which have the title data analyst manager) so we will have to be a little more creative in our approach.
+The word "data"" seems pretty important.  It occurs in all of the Technology samples, none of the Sales samples and only one of the Finance samples.  On the other hand the word "manager" appears in every single category, so it is probably not as useful.  The big takeaway here is that we can use word occurrences to build a probabilistic model.  Let's start tracking words then
+
+
+###Count word frequencies
+Here we make use of the tm (text mining) package
+
+```{r}
+# first build a Vector Corpus object
+my.corpus <- VCorpus(VectorSource(jobtitles$job_title))
+
+# now build a document term matrix
+dtm <- DocumentTermMatrix(my.corpus)
+
+# inspect the results
+inspect(dtm)
+```
+
+Finance
+```{r}
+job_title <- jobtitles[,1]
+f <- as.matrix(dtm)
+cbind(job_title[1:3],f[1:3,])
+```
+
+Sales
+```{r}
+cbind(job_title[4:7],f[4:7,])
+```
+
+Technology
+```{r}
+cbind(job_title[8:10],f[8:10,])
+```
+
+Unlabeled
+```{r}
+cbind(job_title[11:12],f[11:12,])
+```
+
+Updating our model a bit, we want to find p(C_k \vert \mathbf{x}) where \mathbf{x} is our feature vector of word occurrences. In the case of “data analyst manager” \mathbf{x} = (x_1, x_2, ... x_{10}) = (1,0,1,0,1,0,0,0,0,0).
+
+
+
+###Train a naive bayes model
+
+put word frequencies into a data.frame and convert column types from numeric to factor 
+ (so naiveBaues() knows the xi is a Bernoulli random veriable and not Gaussian)
+
+####prepare training data
+```{r}
+train.x <- data.frame(inspect(dtm)[1:10,]) # use the first 10 samples to build the training set
+train.x[, 1:10] <- lapply(train.x, FUN=function(x) factor(x, levels=c("0", "1"))) # convert columns to factor type so that naiveBayes knows features are Bernoulli random variables
+train.y <- factor(jobtitles$job_category[1:10])
+```
+
+
+
+#### prepare test data
+
+```{r}
+test.x <- data.frame(inspect(dtm)[11:12,]) # use the last 2 samples to build the test set
+test.x[, 1:10] <- lapply(test.x, FUN=function(x) factor(x, levels=c("0", "1"))) # convert columns to factor type
+```
+
+
+#### train model
+```{r}
+classifier <- naiveBayes(x=train.x, y=train.y, laplace=0.000000001)  # use laplace (i.e. alpha) of nearly 0
+```
+
+
+#### make prediction on the unlabeled data
+```{r}
+predict(classifier, test.x, type="raw")
+```
+
+
+
+### Train a naive bayes model with laplace (alpha) = 1
+
+#### train model
+```{r}
+classifier <- naiveBayes(x=train.x, y=train.y, laplace=1)  # use laplace (i.e. alpha) of 1
+```
+
+
+#### make prediction on the unlabeled data
+```{r}
+predict(classifier, test.x, type="raw")
+```
+
+
+
+###Reference
+
+http://gormanalysis.com/introduction-to-naive-bayes/
